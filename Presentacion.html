@@ -1,0 +1,2023 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>ARIT — Plataforma de gestión de incidencias municipales</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<script type="application/json" id="speaker-notes">
+[
+  "Buenos días. Soy Asier Gallardo, junto con Edwar González presentamos el proyecto final del ciclo: ARIT, una plataforma de gestión de incidencias municipales. En los próximos 10 minutos vamos a recorrer la solución que hemos construido, el stack técnico, los retos más interesantes y los resultados.",
+  "Nuestra propuesta es una sola plataforma web que centraliza el ciclo de vida completo de la incidencia: reporte georeferenciado, priorización, asignación, resolución con evidencia fotográfica, y notificación al ciudadano. Una sola fuente de verdad.",
+  "La plataforma se diseñó alrededor de tres roles bien diferenciados, cada uno con su propia interfaz y permisos. El ciudadano reporta y se suscribe. El trabajador recibe asignaciones y resuelve. El administrador gobierna usuarios, categorías y prioridades.",
+  "El stack es la lista de tecnologías que usamos. Lo voy a ir explicando con calma en las siguientes slides, pero la idea general es: Django y Python para el cerebro del servidor, PostgreSQL para guardar los datos, React para lo que ve el usuario, y Docker para arrancarlo todo con un solo comando.",
+  "Esta es la arquitectura. En lugar de instalar todas las piezas en el mismo ordenador, cada una vive en su propio contenedor: la base de datos por un lado, el servidor por otro, Redis por otro. Docker se encarga de que se conozcan entre sí. La ventaja: cualquiera puede arrancar el proyecto en su máquina con un solo comando, sin instalar nada a mano.",
+  "En Django, el código se organiza en ‘apps’, que son carpetas con una responsabilidad concreta. Tenemos cuatro: una para los usuarios, otra para las incidencias, otra para las asignaciones de trabajo, y otra para las notificaciones. Cada una vive aislada, lo que hace el código más fácil de mantener.",
+  "Dentro de cada app de Django siempre encontramos los mismos archivos, cada uno con un trabajo concreto. Os los explico uno a uno: models define las tablas de la base de datos; serializers traduce entre Python y JSON para el frontend; views recibe las peticiones HTTP y decide qué hacer; urls conecta cada dirección con su vista; permissions controla quién puede hacer qué; y filters convierte parámetros de URL en consultas a la base de datos.",
+  "Os enseño código real del archivo models. Aquí está el modelo Incident, que define la tabla de incidencias. Lo más interesante: usamos TextChoices para que el campo estado tenga opciones validadas; el campo vote_count está desnormalizado, es decir, guardamos el contador para no tener que recalcular los votos en cada listado; y en lugar de borrar físicamente, marcamos un campo deleted_at, conservando el historial.",
+  "En serializers está el traductor entre Python y JSON. Lo interesante aquí son los campos calculados con SerializerMethodField: por ejemplo is_voted, que indica si el usuario actual ha votado este incidente, se calcula al vuelo a partir del contexto de la petición. Y en to_representation hacemos un truco: una sola clase serializer, pero al no-admin le ocultamos campos internos como admin_notes. Así evitamos tener serializers separados por rol.",
+  "En views está la lógica de negocio. Heredando de ModelViewSet, Django REST nos da gratis los cinco endpoints CRUD: listar, ver, crear, actualizar, borrar. Encima de eso, sobrescribimos get_queryset para filtrar por rol, y añadimos endpoints custom con el decorador action. Así sale por ejemplo /incidents/3/vote/ para votar con un toggle: si el voto ya existe se borra; si no, se crea. Además, select_related y prefetch_related nos evitan el problema N+1 clásico del ORM.",
+  "Aprovechando todo esto, Django y DRF nos dan dos herramientas casi gratis. La primera es el panel de Django Admin: registrando los modelos, Django genera automáticamente un CRUD completo para inspeccionar y manipular la base de datos en desarrollo. La segunda es Swagger, una página interactiva donde la propia API se documenta sola y podemos probar cada endpoint sin necesidad de Postman.",
+  "Reto técnico más interesante: las notificaciones en tiempo real. El problema es que en una web normal el navegador pregunta y el servidor responde, pero el servidor no puede avisar por su cuenta. La solución son los WebSockets, que abren una línea telefónica permanente entre cliente y servidor. Django Channels es la extensión que hace esto posible, y Redis ayuda repartiendo los mensajes al canal correcto. A la derecha veis las dos formas que tiene el usuario de leer sus notificaciones: la campanita del header, que se actualiza al instante, y la página completa con el histórico.",
+  "Para el frontend, lo que se ve en el navegador, hemos usado cuatro herramientas. React, que permite construir la web como piezas de Lego reutilizables. Vite, un motor de desarrollo que actualiza la web en tiempo real cuando cambiamos algo. Tailwind, un sistema de estilos donde los colores y espacios viven dentro del propio componente. Y Redux, que guarda el estado compartido como quién está logueado o qué notificaciones tiene.",
+  "Para hablar con la API, todo pasa por una sola instancia de Axios. Tiene dos interceptores que merecen la pena destacar. El primero, antes de cada petición, lee el token JWT del localStorage y lo añade automáticamente a la cabecera. Ningún componente tiene que acordarse del token. El segundo, después de cada respuesta, mira si el servidor devolvió un 401 — sesión caducada. Si es así, intenta refrescar el token con el refresh y reintenta la petición original. El usuario nunca ve un ‘sesión expirada’ mientras el refresh siga vivo.",
+  "Empezamos por el flujo del ciudadano. Lo primero, reportar una incidencia. El proceso tiene tres pasos: primero sube una foto del problema, segundo marca la ubicación haciendo clic en el mapa, y tercero recibe la confirmación de que el incidente ya es visible para el resto de usuarios.",
+  "Una vez publicado el incidente, el ciudadano puede interactuar con él. En el detalle ve la foto, la dirección, la descripción y los comentarios. Puede votar para indicar prioridad, suscribirse para recibir notificaciones del estado, o compartir el incidente por WhatsApp, X, Facebook, Telegram o copiando el enlace directo.",
+  "Cada usuario tiene su perfil. En mi propio perfil veo mi información personal, mis estadísticas y la lista de incidentes que he reportado. Si pulso sobre otro usuario, veo su perfil público con sus reportes, lo que permite seguir la actividad de la comunidad.",
+  "Y el panel del trabajador y administrador. Por un lado, la bandeja con los incidentes asignados a cada trabajador. Por otro, la gestión de usuarios donde el administrador puede cambiar roles. Y por último, la gestión de categorías para mantener la lista maestra ordenada.",
+  "Resultados: una plataforma funcional con los tres roles, autenticación segura, notificaciones en tiempo real, mapas, fotos, comentarios y votos. Gracias por vuestra atención."
+]
+</script>
+
+<style>
+  :root{
+    /* Type scale (1920x1080) */
+    --type-display: 110px;
+    --type-title: 64px;
+    --type-subtitle: 44px;
+    --type-body: 32px;
+    --type-small: 26px;
+    --type-eyebrow: 24px;
+    --type-mono: 24px;
+
+    /* Spacing */
+    --pad-top: 110px;
+    --pad-bottom: 96px;
+    --pad-x: 120px;
+    --gap-title: 56px;
+    --gap-item: 28px;
+
+    /* Color */
+    --bg:       oklch(0.16 0.008 250);
+    --bg-soft:  oklch(0.20 0.010 250);
+    --surface:  oklch(0.22 0.012 250);
+    --line:     oklch(0.32 0.015 250);
+    --line-soft:oklch(0.26 0.012 250);
+    --fg:       oklch(0.97 0.004 250);
+    --fg-muted: oklch(0.72 0.012 250);
+    --fg-dim:   oklch(0.55 0.012 250);
+    --accent:   oklch(0.85 0.155 165);
+    --accent-soft: oklch(0.85 0.155 165 / 0.12);
+  }
+
+  html, body { margin: 0; padding: 0; background:#000; color: var(--fg); font-family: 'Geist', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  deck-stage { background:#000; }
+  deck-stage > section{
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Geist', sans-serif;
+    font-weight: 400;
+    box-sizing: border-box;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Generic chrome */
+  .frame{
+    position: absolute;
+    inset: 0;
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+  }
+  .eyebrow{
+    font-family: 'Geist Mono', monospace;
+    font-size: var(--type-eyebrow);
+    color: var(--accent);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 500;
+    margin: 0;
+  }
+  .title{
+    font-size: var(--type-title);
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    margin: 0;
+    color: var(--fg);
+    text-wrap: balance;
+  }
+  .subtitle{
+    font-size: var(--type-subtitle);
+    font-weight: 400;
+    line-height: 1.18;
+    letter-spacing: -0.015em;
+    margin: 0;
+    color: var(--fg);
+  }
+  .body{
+    font-size: var(--type-body);
+    line-height: 1.45;
+    color: var(--fg-muted);
+    font-weight: 400;
+    margin: 0;
+    text-wrap: pretty;
+  }
+  .small{
+    font-size: var(--type-small);
+    line-height: 1.45;
+    color: var(--fg-muted);
+    margin: 0;
+  }
+  .mono{
+    font-family: 'Geist Mono', monospace;
+    font-size: var(--type-mono);
+    letter-spacing: 0.02em;
+  }
+  .accent { color: var(--accent); }
+
+  /* Slide-level helpers */
+  .slide-head{ display: flex; flex-direction: column; gap: 18px; }
+  .slide-head .num{
+    font-family: 'Geist Mono', monospace;
+    font-size: var(--type-eyebrow);
+    color: var(--fg-dim);
+    letter-spacing: 0.15em;
+  }
+  .slide-head-row{
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .slide-body{
+    margin-top: var(--gap-title);
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  /* Cards */
+  .card{
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 18px;
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    box-sizing: border-box;
+  }
+  .card-label{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--accent);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin: 0;
+  }
+  .card-title{
+    font-size: 38px;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    color: var(--fg);
+    margin: 0;
+    line-height: 1.1;
+  }
+
+  /* Grid layouts */
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 40px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+
+  /* Footer corner ribbon */
+  .corner{
+    position: absolute;
+    bottom: 36px;
+    left: var(--pad-x);
+    right: var(--pad-x);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'Geist Mono', monospace;
+    font-size: 18px;
+    color: var(--fg-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .corner .dot{
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    display: inline-block; margin-right: 12px; vertical-align: middle;
+  }
+
+  /* ========== Slide 1: Cover ========== */
+  .cover{
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 110px 120px 110px;
+  }
+  .cover-grid-bg{
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size: 80px 80px;
+    background-position: -1px -1px;
+    opacity: 0.5;
+    mask-image: radial-gradient(ellipse at 70% 50%, black 0%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse at 70% 50%, black 0%, transparent 70%);
+  }
+  .cover-content{
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+  }
+  .cover-top{
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .cover-mark{
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 26px;
+    letter-spacing: 0.18em;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+  }
+  .cover-mark .mark-square{
+    width: 18px; height: 18px;
+    background: var(--accent);
+    border-radius: 4px;
+  }
+  .cover-meta{
+    text-align: right;
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg-dim);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    line-height: 1.8;
+  }
+  .cover-display{
+    font-size: var(--type-display);
+    line-height: 0.96;
+    letter-spacing: -0.035em;
+    font-weight: 500;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .cover-display .accent { color: var(--accent); }
+  .cover-tag{
+    font-size: 30px;
+    color: var(--fg-muted);
+    margin-top: 36px;
+    font-weight: 400;
+    max-width: 1100px;
+    line-height: 1.4;
+  }
+  .cover-bottom{
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 60px;
+  }
+  .cover-authors{
+    display: flex;
+    gap: 80px;
+  }
+  .author{ display: flex; flex-direction: column; gap: 6px; }
+  .author-label{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg-dim);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .author-name{
+    font-size: 32px;
+    color: var(--fg);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .cover-footer-right{
+    text-align: right;
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg-dim);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    line-height: 1.8;
+  }
+
+  /* ========== Slide 2 (problem) ========== */
+  .problem-statement{
+    font-size: 84px;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+    font-weight: 500;
+    color: var(--fg);
+    margin: 0;
+    max-width: 1500px;
+    text-wrap: balance;
+  }
+  .problem-statement .dim{ color: var(--fg-dim); }
+  .problem-statement .accent{ color: var(--accent); }
+  .channels{
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 40px;
+  }
+  .channel{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    padding: 14px 26px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .channel.strike{
+    text-decoration: line-through;
+    color: var(--fg-dim);
+    opacity: 0.7;
+  }
+
+  /* ========== Slide 3 (solution) ========== */
+  .solution-grid{
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 24px;
+    flex: 1;
+    min-height: 0;
+  }
+  .pillar{
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 22px;
+    padding: 44px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .pillar-num{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--accent);
+    letter-spacing: 0.14em;
+  }
+  .pillar h3{
+    font-size: 40px;
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+    font-weight: 500;
+    margin: 0;
+    color: var(--fg);
+  }
+  .pillar p{
+    font-size: 26px;
+    line-height: 1.45;
+    color: var(--fg-muted);
+    margin: 0;
+  }
+
+  /* ========== Slide 4 (roles) ========== */
+  .roles-grid{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    flex: 1;
+    border-top: 1px solid var(--line-soft);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .role{
+    padding: 48px 36px;
+    border-right: 1px solid var(--line-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .role:last-child{ border-right: 0; }
+  .role-tag{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--accent);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .role h3{
+    font-size: 44px;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    margin: 0;
+    color: var(--fg);
+    line-height: 1.05;
+  }
+  .role ul{
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .role li{
+    font-size: 26px;
+    color: var(--fg-muted);
+    padding-left: 22px;
+    position: relative;
+    line-height: 1.35;
+  }
+  .role li::before{
+    content: "→";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-family: 'Geist Mono', monospace;
+  }
+
+  /* ========== Slide 5 (stack) ========== */
+  .stack-grid{
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    flex: 1;
+    align-content: start;
+  }
+  .stack-cell{
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 14px;
+    padding: 24px 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 130px;
+    justify-content: space-between;
+  }
+  .stack-layer{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--accent);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .stack-name{
+    font-size: 32px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--fg);
+    line-height: 1.1;
+  }
+  .stack-version{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg-dim);
+    letter-spacing: 0.04em;
+  }
+
+  /* ========== Slide 6 (architecture) ========== */
+  .arch-canvas{
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px 1fr 320px;
+    gap: 60px;
+    align-items: center;
+  }
+  .arch-col{
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .arch-col-center{
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    position: relative;
+  }
+  .arch-node{
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 24px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .arch-node.accent{
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .arch-node-label{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg-dim);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .arch-node-name{
+    font-size: 28px;
+    font-weight: 500;
+    color: var(--fg);
+    letter-spacing: -0.01em;
+  }
+  .arch-node.accent .arch-node-label{ color: var(--accent); }
+  .arch-arrow{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg-dim);
+    text-align: center;
+    letter-spacing: 0.2em;
+  }
+  .arch-caption{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg-dim);
+    letter-spacing: 0.1em;
+    text-align: center;
+    margin-top: -8px;
+  }
+
+  /* ========== Slide 7 (domain) ========== */
+  .domain-grid{
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    flex: 1;
+  }
+  .domain-app{
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 16px;
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .domain-app-name{
+    font-family: 'Geist Mono', monospace;
+    font-size: 26px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    font-weight: 500;
+  }
+  .domain-app-desc{
+    font-size: 24px;
+    color: var(--fg-muted);
+    line-height: 1.35;
+  }
+  .domain-models{
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-top: 1px solid var(--line-soft);
+    padding-top: 18px;
+    margin-top: auto;
+  }
+  .domain-models li{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg);
+    letter-spacing: 0.02em;
+  }
+  .domain-models li::before{
+    content: "·  ";
+    color: var(--fg-dim);
+  }
+
+  /* ========== Code slides ========== */
+  .code-slide{
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 40px;
+    flex: 1;
+    min-height: 0;
+  }
+  .code{
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 14px;
+    padding: 28px 32px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 22px;
+    line-height: 1.5;
+    color: var(--fg-muted);
+    white-space: pre;
+    overflow: hidden;
+    margin: 0;
+    height: 100%;
+    box-sizing: border-box;
+  }
+  .code .tok-key  { color: oklch(0.78 0.13 280); }   /* keywords: class, def, return */
+  .code .tok-cls  { color: oklch(0.85 0.12 200); font-weight: 500; }  /* class names */
+  .code .tok-fn   { color: var(--fg); font-weight: 500; }  /* function names */
+  .code .tok-str  { color: var(--accent); }   /* strings */
+  .code .tok-com  { color: var(--fg-dim); font-style: italic; }  /* comments */
+  .code .tok-num  { color: oklch(0.80 0.13 60); }   /* numbers */
+  .code .tok-dec  { color: oklch(0.82 0.12 320); }   /* decorators @action */
+  .code .tok-pun  { color: var(--fg-dim); }
+  .code-explain{
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    min-height: 0;
+  }
+  .code-explain h3{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--accent);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin: 0;
+  }
+  .code-explain ul{
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .code-explain li{
+    font-size: 26px;
+    color: var(--fg);
+    line-height: 1.4;
+    padding-left: 28px;
+    position: relative;
+  }
+  .code-explain li::before{
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-family: 'Geist Mono', monospace;
+    font-weight: 700;
+  }
+  .code-explain li .dim{ color: var(--fg-muted); font-size: 24px; display: block; margin-top: 4px; }
+
+  /* ========== Duo slide (Admin + Swagger) ========== */
+  .duo-grid{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 36px;
+    flex: 1;
+    min-height: 0;
+  }
+  .duo-cell{
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-height: 0;
+  }
+  .duo-cell image-slot{
+    flex: 1;
+    min-height: 0;
+  }
+  .duo-label{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--accent);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .duo-cell h3{
+    font-size: 36px;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    color: var(--fg);
+    margin: 0;
+    line-height: 1.1;
+  }
+  .duo-cell p{
+    font-size: 24px;
+    color: var(--fg-muted);
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  /* WebSockets proof images (right column - 2 stacked) */
+  .ws-proof{
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    gap: 24px;
+    height: 100%;
+    min-height: 0;
+  }
+  .ws-proof-panel{
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+  }
+  .ws-proof-panel image-slot{
+    flex: 1;
+    min-height: 0;
+  }
+  .ws-proof-label{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg-muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .ws-proof-label .accent{ color: var(--accent); }
+
+  /* Two-panel demo (variant of .demo) */
+  .demo-pair{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    flex: 1;
+    min-height: 0;
+  }
+  .demo-pair .demo-frame image-slot{
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* ========== Slide 8 (backend) ========== */
+  .files-grid{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    flex: 1;
+  }
+  .file-card{
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 14px;
+    padding: 32px 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .file-card .name{
+    font-family: 'Geist Mono', monospace;
+    font-size: 32px;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+  }
+  .file-card .tagline{
+    font-size: 28px;
+    color: var(--fg);
+    line-height: 1.2;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .file-card .desc{
+    font-size: 24px;
+    color: var(--fg-muted);
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  /* ========== Slide 9/10/11 (challenges) ========== */
+  .challenge{
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 60px;
+    flex: 1;
+    align-items: stretch;
+    min-height: 0;
+  }
+  .challenge-text{
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  .challenge-text .lead{
+    font-size: 30px;
+    line-height: 1.3;
+    color: var(--fg);
+    max-width: 760px;
+    margin: 0;
+  }
+  .challenge-text .lead-label{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--accent);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin: 0 0 10px;
+    display: block;
+  }
+  .challenge-points{
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .challenge-points li{
+    font-size: 26px;
+    color: var(--fg-muted);
+    line-height: 1.4;
+    padding-left: 28px;
+    position: relative;
+  }
+  .challenge-points li::before{
+    content: "";
+    position: absolute;
+    left: 0; top: 14px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent);
+  }
+  .flow{
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 18px;
+    padding: 40px 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    height: 100%;
+    box-sizing: border-box;
+    justify-content: center;
+  }
+  .flow-step{
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 18px;
+    align-items: center;
+  }
+  .flow-num{
+    width: 44px; height: 44px;
+    border: 1px solid var(--accent);
+    border-radius: 50%;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    font-weight: 500;
+  }
+  .flow-label{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg);
+    letter-spacing: 0.02em;
+  }
+  .flow-arrow{
+    margin-left: 21px;
+    width: 2px;
+    height: 18px;
+    background: var(--line);
+  }
+
+  /* image-slot styling */
+  image-slot{
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  image-slot::part(label){
+    color: var(--fg-muted);
+    font-family: 'Geist Mono', monospace;
+    font-size: 20px;
+    letter-spacing: 0.1em;
+  }
+
+  /* ========== Demo slides ========== */
+  .demo{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    flex: 1;
+    min-height: 0;
+  }
+  .demo-frame{
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0;
+  }
+  .demo-frame .caption{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg-muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .demo-frame .step{
+    color: var(--accent);
+    margin-right: 14px;
+  }
+  .demo-frame image-slot{
+    flex: 1;
+    min-height: 0;
+  }
+
+  .demo-2{
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 32px;
+    flex: 1;
+    min-height: 0;
+  }
+  .demo-2 image-slot{ min-height: 0; }
+  .demo-2 .demo-side{
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .demo-2 .demo-side h3{
+    font-size: 36px;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    margin: 0;
+    color: var(--fg);
+    line-height: 1.1;
+  }
+  .demo-2 .demo-side p{
+    font-size: 24px;
+    color: var(--fg-muted);
+    line-height: 1.4;
+    margin: 0;
+  }
+  .demo-2-features{
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .demo-2-features li{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg);
+    padding: 14px 18px;
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+  }
+
+  /* ========== Slide 15 (process) ========== */
+  .process-grid{
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 32px;
+    flex: 1;
+  }
+  .process-block{
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 18px;
+    padding: 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .process-block .h{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--accent);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .process-block .t{
+    font-size: 32px;
+    font-weight: 500;
+    color: var(--fg);
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    margin: 0;
+  }
+  .process-block .d{
+    font-size: 24px;
+    color: var(--fg-muted);
+    line-height: 1.4;
+    margin: 0;
+  }
+  .split-team{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 8px;
+  }
+  .split-team .person{
+    border-left: 2px solid var(--accent);
+    padding-left: 18px;
+  }
+  .split-team .person .who{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg);
+    letter-spacing: 0.02em;
+    margin-bottom: 6px;
+  }
+  .split-team .person .what{
+    font-size: 24px;
+    color: var(--fg-muted);
+    line-height: 1.4;
+  }
+
+  /* ========== Slide 16 (results) ========== */
+  .results-top{
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-bottom: 48px;
+  }
+  .metric{
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-radius: 16px;
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .metric-num{
+    font-size: 84px;
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    color: var(--accent);
+    line-height: 1;
+    font-family: 'Geist Mono', monospace;
+  }
+  .metric-label{
+    font-size: 24px;
+    color: var(--fg-muted);
+    line-height: 1.3;
+  }
+  .results-bottom{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    flex: 1;
+    min-height: 0;
+  }
+  .results-single{
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .results-single h3{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--accent);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin: 0 0 28px;
+  }
+  .results-single ul{
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px 64px;
+  }
+  .results-single li{
+    font-size: 30px;
+    color: var(--fg);
+    line-height: 1.35;
+    padding-left: 30px;
+    position: relative;
+  }
+  .results-single li::before{
+    content: "+";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-family: 'Geist Mono', monospace;
+  }
+  .results-col h3{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--accent);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin: 0 0 24px;
+  }
+  .results-col ul{
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .results-col li{
+    font-size: 28px;
+    color: var(--fg);
+    line-height: 1.35;
+    padding-left: 26px;
+    position: relative;
+  }
+  .results-col li::before{
+    content: "+";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-family: 'Geist Mono', monospace;
+  }
+  .results-col.next li::before{
+    content: "→";
+  }
+
+  /* Closing thank-you within results slide */
+  .closing-bar{
+    margin-top: 32px;
+    padding-top: 32px;
+    border-top: 1px solid var(--line-soft);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .closing-bar .thanks{
+    font-size: 44px;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    color: var(--fg);
+  }
+  .closing-bar .repo{
+    font-family: 'Geist Mono', monospace;
+    font-size: 24px;
+    color: var(--fg-muted);
+    letter-spacing: 0.04em;
+  }
+
+</style>
+</head>
+<body>
+<deck-stage width="1920" height="1080">
+
+<!-- ============================ 01 — COVER ============================ -->
+<section data-label="01 Portada">
+  <div class="cover-grid-bg"></div>
+  <div class="frame cover">
+    <div class="cover-content">
+
+      <div class="cover-top">
+        <div class="cover-mark">
+          <span class="mark-square"></span>
+          <span>mni-Tech · 2026</span>
+        </div>
+        <div class="cover-meta">
+          <div>Proyecto DAW · Desarrollo de Aplicaciones Web</div>
+          <div>Proyecto integrador final</div>
+        </div>
+      </div>
+
+      <div>
+        <p class="eyebrow" style="margin-bottom: 32px; font-size: 28px;">ARIT</p>
+        <h1 class="cover-display">Plataforma de gestión<br/>de incidencias <span class="accent">municipales</span>.</h1>
+        <p class="cover-tag">Un sistema web full-stack para que ciudadanos, trabajadores y administradores gestionen el ciclo de vida completo de una incidencia urbana.</p>
+      </div>
+
+      <div class="cover-bottom">
+        <div class="cover-authors">
+          <div class="author">
+            <span class="author-label">Autor 01</span>
+            <span class="author-name">Asier Gallardo Delgado</span>
+          </div>
+          <div class="author">
+            <span class="author-label">Autor 02</span>
+            <span class="author-name">Edwar González</span>
+          </div>
+        </div>
+        <div class="cover-footer-right">
+          <div>github.com / AsGaDel</div>
+          <div>Proyecto_DAW · ARIT</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 03 — SOLUTION ============================ -->
+<section data-label="03 La solucion">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">01 · La solución</p>
+        <span class="mono" style="color: var(--fg-dim);">Una plataforma. Un flujo. Una fuente de verdad.</span>
+      </div>
+      <h2 class="title" style="max-width: 1500px;">La solución propuesta.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="solution-grid">
+        <div class="pillar">
+          <span class="pillar-num">PILAR 01</span>
+          <h3>Reporte<br/>georeferenciado</h3>
+          <p>Captura con foto, descripción, categoría y posición GPS sobre mapa interactivo.</p>
+        </div>
+        <div class="pillar">
+          <span class="pillar-num">PILAR 02</span>
+          <h3>Asignación<br/>y resolución</h3>
+          <p>Priorización, asignación a trabajador, comentarios internos y evidencia fotográfica del cierre.</p>
+        </div>
+        <div class="pillar">
+          <span class="pillar-num">PILAR 03</span>
+          <h3>Notificación<br/>en tiempo real</h3>
+          <p>El ciudadano suscrito recibe cada cambio de estado al instante, sin recargar la página.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 04 — ROLES ============================ -->
+<section data-label="04 Tres roles">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">02 · Roles de usuario</p>
+        <span class="mono" style="color: var(--fg-dim);">role = citizen | worker | admin</span>
+      </div>
+      <h2 class="title">Tipos de usuario y permisos.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="roles-grid">
+        <div class="role">
+          <span class="role-tag">Ciudadano</span>
+          <h3>Reporta<br/>y participa.</h3>
+          <ul>
+            <li>Crear y comentar incidencias</li>
+            <li>Subir fotografías</li>
+            <li>Votar y suscribirse</li>
+            <li>Seguir el estado en su perfil</li>
+          </ul>
+        </div>
+        <div class="role">
+          <span class="role-tag">Trabajador</span>
+          <h3>Recibe<br/>y resuelve.</h3>
+          <ul>
+            <li>Bandeja de asignaciones</li>
+            <li>Cambiar estado y prioridad</li>
+            <li>Adjuntar evidencia de resolución</li>
+            <li>Comentar internamente</li>
+          </ul>
+        </div>
+        <div class="role">
+          <span class="role-tag">Administrador</span>
+          <h3>Gobierna<br/>y supervisa.</h3>
+          <ul>
+            <li>Gestión de usuarios y roles</li>
+            <li>Gestión de categorías</li>
+            <li>Notas internas y soft delete</li>
+            <li>Estadísticas agregadas</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 05 — STACK ============================ -->
+<section data-label="05 Stack tecnologico">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">03 · Stack tecnológico</p>
+        <span class="mono" style="color: var(--fg-dim);">backend · frontend · infraestructura</span>
+      </div>
+      <h2 class="title">Tecnologías utilizadas.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="stack-grid">
+        <div class="stack-cell">
+          <span class="stack-layer">Backend</span>
+          <div><div class="stack-name">Django</div><div class="stack-version">5.0.6</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">API</span>
+          <div><div class="stack-name">DRF</div><div class="stack-version">3.15.2</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Auth</span>
+          <div><div class="stack-name">SimpleJWT</div><div class="stack-version">5.3.1</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Base de datos</span>
+          <div><div class="stack-name">PostgreSQL</div><div class="stack-version">16-alpine</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Cola / broker</span>
+          <div><div class="stack-name">Redis</div><div class="stack-version">7-alpine</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Tareas async</span>
+          <div><div class="stack-name">Celery</div><div class="stack-version">5.4.0</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Realtime</span>
+          <div><div class="stack-name">Channels</div><div class="stack-version">4.1.0</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Docs API</span>
+          <div><div class="stack-name">drf-spectacular</div><div class="stack-version">0.27.2</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Frontend</span>
+          <div><div class="stack-name">React</div><div class="stack-version">18.3.1</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Bundler</span>
+          <div><div class="stack-name">Vite</div><div class="stack-version">5.3.4</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Estilos</span>
+          <div><div class="stack-name">Tailwind CSS</div><div class="stack-version">3.4.6</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Estado</span>
+          <div><div class="stack-name">Redux Toolkit</div><div class="stack-version">2.2.6</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Rutas</span>
+          <div><div class="stack-name">React Router</div><div class="stack-version">6.24.0</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Mapas</span>
+          <div><div class="stack-name">Leaflet</div><div class="stack-version">1.9.4</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">HTTP</span>
+          <div><div class="stack-name">Axios</div><div class="stack-version">1.7.2</div></div>
+        </div>
+        <div class="stack-cell">
+          <span class="stack-layer">Infraestructura</span>
+          <div><div class="stack-name">Docker Compose</div><div class="stack-version">v2</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 06 — ARCHITECTURE ============================ -->
+<section data-label="06 Arquitectura">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">04 · Arquitectura</p>
+        <span class="mono" style="color: var(--fg-dim);">docker-compose up -d</span>
+      </div>
+      <h2 class="title">Arquitectura del sistema.</h2>
+    </div>
+    <div class="slide-body" style="justify-content: center;">
+      <div class="arch-canvas">
+        <div class="arch-col">
+          <div class="arch-node">
+            <span class="arch-node-label">Cliente</span>
+            <span class="arch-node-name">Navegador</span>
+          </div>
+          <div class="arch-arrow">↓  HTTPS  ↓</div>
+          <div class="arch-node accent">
+            <span class="arch-node-label">:5173</span>
+            <span class="arch-node-name">Frontend · React + Vite</span>
+          </div>
+        </div>
+
+        <div class="arch-col-center">
+          <div class="arch-arrow">⇄  REST · /api</div>
+          <div class="arch-node accent">
+            <span class="arch-node-label">:8000</span>
+            <span class="arch-node-name">Backend · Django + DRF</span>
+          </div>
+          <div class="arch-arrow">⇄  WebSocket · /ws</div>
+          <div class="arch-node">
+            <span class="arch-node-label">Worker</span>
+            <span class="arch-node-name">Celery</span>
+          </div>
+        </div>
+
+        <div class="arch-col">
+          <div class="arch-node">
+            <span class="arch-node-label">:5432</span>
+            <span class="arch-node-name">PostgreSQL 16</span>
+          </div>
+          <div class="arch-arrow">↑</div>
+          <div class="arch-node">
+            <span class="arch-node-label">:6379</span>
+            <span class="arch-node-name">Redis · broker + channel layer</span>
+          </div>
+          <div class="arch-arrow">↑</div>
+          <div class="arch-node">
+            <span class="arch-node-label">Volumen</span>
+            <span class="arch-node-name">media_data · imágenes</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 07 — DOMAIN ============================ -->
+<section data-label="07 Modelo de dominio">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">05 · Backend · apps Django</p>
+        <span class="mono" style="color: var(--fg-dim);">backend/apps/</span>
+      </div>
+      <h2 class="title">Organización del backend.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="domain-grid">
+        <div class="domain-app">
+          <span class="domain-app-name">users/</span>
+          <p class="domain-app-desc">Modelo de usuario personalizado con email como identificador. Roles, perfiles y permisos.</p>
+          <ul class="domain-models">
+            <li>User</li>
+            <li>UserProfile</li>
+            <li>Role · 3 choices</li>
+          </ul>
+        </div>
+        <div class="domain-app">
+          <span class="domain-app-name">incidents/</span>
+          <p class="domain-app-desc">Núcleo del dominio. Incidencias geoetiquetadas, votos, suscripciones y comentarios.</p>
+          <ul class="domain-models">
+            <li>Incident</li>
+            <li>Category</li>
+            <li>IncidentPhoto</li>
+            <li>Comment · Vote</li>
+            <li>Subscription</li>
+          </ul>
+        </div>
+        <div class="domain-app">
+          <span class="domain-app-name">work_orders/</span>
+          <p class="domain-app-desc">Asignación de incidencias a trabajadores. Trazabilidad del ciclo de trabajo.</p>
+          <ul class="domain-models">
+            <li>WorkOrder</li>
+            <li>Assignment</li>
+          </ul>
+        </div>
+        <div class="domain-app">
+          <span class="domain-app-name">notifications/</span>
+          <p class="domain-app-desc">Notificaciones persistentes y push en tiempo real vía Django Channels.</p>
+          <ul class="domain-models">
+            <li>Notification</li>
+            <li>NotificationService</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 08 — BACKEND ============================ -->
+<section data-label="08 Backend Django">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">06 · Backend · estructura interna</p>
+        <span class="mono" style="color: var(--fg-dim);">apps/&lt;nombre&gt;/</span>
+      </div>
+      <h2 class="title">Estructura interna de una app Django.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="files-grid">
+        <div class="file-card">
+          <span class="name">models.py</span>
+          <span class="tagline">Define las tablas de la base de datos.</span>
+          <p class="desc">Cada clase Python es una tabla. Aquí vive Incident con sus campos título, descripción, latitud y estado.</p>
+        </div>
+        <div class="file-card">
+          <span class="name">serializers.py</span>
+          <span class="tagline">El traductor entre Python y JSON.</span>
+          <p class="desc">Convierte un objeto Incident en JSON para el frontend, y valida el JSON que llega de vuelta.</p>
+        </div>
+        <div class="file-card">
+          <span class="name">views.py</span>
+          <span class="tagline">Decide qué hacer con cada petición.</span>
+          <p class="desc">Aquí está la lógica: “dame los pendientes”, “crea uno nuevo”, “márcalo como resuelto”.</p>
+        </div>
+        <div class="file-card">
+          <span class="name">urls.py</span>
+          <span class="tagline">La centralita de direcciones.</span>
+          <p class="desc">Conecta cada URL con su vista. /api/incidents/3/ entra por aquí antes de llegar al código.</p>
+        </div>
+        <div class="file-card">
+          <span class="name">permissions.py</span>
+          <span class="tagline">Quién puede hacer qué.</span>
+          <p class="desc">Un ciudadano puede comentar; un trabajador cambiar estado; un admin borrar. Se aplica antes de la vista.</p>
+        </div>
+        <div class="file-card">
+          <span class="name">filters.py</span>
+          <span class="tagline">Búsquedas automáticas desde la URL.</span>
+          <p class="desc">?status=pending&amp;priority=Crítico se traduce solo en una consulta a la base de datos.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 08a — MODELS.PY ============================ -->
+<section data-label="09 models.py">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">07 · Backend · models.py</p>
+        <span class="mono" style="color: var(--fg-dim);">apps/incidents/models.py</span>
+      </div>
+      <h2 class="title">El modelo de datos.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="code-slide">
+<pre class="code"><span class="tok-key">class</span> <span class="tok-cls">Incident</span>(models.Model):
+    <span class="tok-key">class</span> <span class="tok-cls">Status</span>(TextChoices):
+        PENDING     = <span class="tok-str">'pending'</span>,     <span class="tok-str">'Pendiente'</span>
+        IN_PROGRESS = <span class="tok-str">'in_progress'</span>, <span class="tok-str">'En proceso'</span>
+        RESOLVED    = <span class="tok-str">'resolved'</span>,    <span class="tok-str">'Resuelto'</span>
+
+    title       = CharField(max_length=<span class="tok-num">200</span>)
+    reporter    = ForeignKey(User, on_delete=CASCADE)
+    status      = CharField(choices=Status.choices)
+    latitude    = DecimalField(<span class="tok-num">9</span>, <span class="tok-num">6</span>)
+    longitude   = DecimalField(<span class="tok-num">9</span>, <span class="tok-num">6</span>)
+
+    <span class="tok-com"># Evita un COUNT(*) en cada listado</span>
+    vote_count  = PositiveIntegerField(default=<span class="tok-num">0</span>)
+
+    <span class="tok-com"># Soft delete: conserva el historial</span>
+    deleted_at  = DateTimeField(null=<span class="tok-key">True</span>, blank=<span class="tok-key">True</span>)</pre>
+        <div class="code-explain">
+          <h3>Lo que aporta</h3>
+          <ul>
+            <li>TextChoices<span class="dim">enum integrado con Django: status pasa a ser un campo con opciones validadas.</span></li>
+            <li>ForeignKey con CASCADE<span class="dim">si se borra el usuario, sus incidencias se eliminan en cadena.</span></li>
+            <li>DecimalField(9,6)<span class="dim">precisión de unos 10 cm para coordenadas geográficas.</span></li>
+            <li>vote_count desnormalizado<span class="dim">se actualiza al votar; evita contar votos en cada listado.</span></li>
+            <li>deleted_at en lugar de DELETE<span class="dim">borrado lógico, el historial se conserva.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 08b — SERIALIZERS.PY ============================ -->
+<section data-label="10 serializers.py">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">08 · Backend · serializers.py</p>
+        <span class="mono" style="color: var(--fg-dim);">apps/incidents/serializers.py</span>
+      </div>
+      <h2 class="title">El traductor entre Python y JSON.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="code-slide">
+<pre class="code"><span class="tok-key">class</span> <span class="tok-cls">IncidentSerializer</span>(ModelSerializer):
+    photos        = IncidentPhotoSerializer(many=<span class="tok-key">True</span>)
+    is_voted      = SerializerMethodField()
+    is_subscribed = SerializerMethodField()
+    reporter_email = EmailField(
+        source=<span class="tok-str">'reporter.email'</span>, read_only=<span class="tok-key">True</span>,
+    )
+
+    <span class="tok-key">def</span> <span class="tok-fn">get_is_voted</span>(self, obj):
+        request = self.context.get(<span class="tok-str">'request'</span>)
+        <span class="tok-key">return</span> obj.votes.filter(
+            user=request.user,
+        ).exists()
+
+    <span class="tok-key">def</span> <span class="tok-fn">to_representation</span>(self, instance):
+        data = <span class="tok-key">super</span>().to_representation(instance)
+        <span class="tok-com"># Oculta campos internos a no-admin</span>
+        <span class="tok-key">if</span> request.user.role != <span class="tok-str">'admin'</span>:
+            data.pop(<span class="tok-str">'admin_notes'</span>, <span class="tok-key">None</span>)
+        <span class="tok-key">return</span> data</pre>
+        <div class="code-explain">
+          <h3>Lo que aporta</h3>
+          <ul>
+            <li>ModelSerializer<span class="dim">deriva el JSON directamente del modelo, sin escribir cada campo.</span></li>
+            <li>SerializerMethodField<span class="dim">añade campos calculados: is_voted, is_subscribed se evalúan por usuario.</span></li>
+            <li>source=<span class="dim">expone reporter.email como un campo plano del JSON.</span></li>
+            <li>to_representation<span class="dim">hook para esconder admin_notes y otros campos a no-admins. Una sola clase, salida distinta por rol.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 08c — VIEWS.PY ============================ -->
+<section data-label="11 views.py">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">09 · Backend · views.py</p>
+        <span class="mono" style="color: var(--fg-dim);">apps/incidents/views.py</span>
+      </div>
+      <h2 class="title">La lógica de negocio.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="code-slide">
+<pre class="code"><span class="tok-key">class</span> <span class="tok-cls">IncidentViewSet</span>(viewsets.ModelViewSet):
+    serializer_class = IncidentSerializer
+    filterset_class  = IncidentFilter
+
+    <span class="tok-key">def</span> <span class="tok-fn">get_queryset</span>(self):
+        qs = Incident.objects.select_related(<span class="tok-str">'reporter'</span>) \
+            .prefetch_related(<span class="tok-str">'photos'</span>, <span class="tok-str">'votes'</span>)
+        <span class="tok-com"># Los admins ven incluso los borrados</span>
+        <span class="tok-key">if</span> self.request.user.role != <span class="tok-str">'admin'</span>:
+            qs = qs.filter(deleted_at__isnull=<span class="tok-key">True</span>)
+        <span class="tok-key">return</span> qs
+
+    <span class="tok-dec">@action</span>(detail=<span class="tok-key">True</span>, methods=[<span class="tok-str">'post'</span>])
+    <span class="tok-key">def</span> <span class="tok-fn">vote</span>(self, request, pk=<span class="tok-key">None</span>):
+        incident = self.get_object()
+        <span class="tok-com"># Toggle: si existe, borra; si no, crea</span>
+        vote, created = Vote.objects.get_or_create(
+            incident=incident, user=request.user,
+        )
+        <span class="tok-key">if not</span> created: vote.delete()
+        <span class="tok-key">return</span> Response({<span class="tok-str">'voted'</span>: created})</pre>
+        <div class="code-explain">
+          <h3>Lo que aporta</h3>
+          <ul>
+            <li>ModelViewSet<span class="dim">los 5 endpoints CRUD (list, retrieve, create, update, destroy) salen automáticos.</span></li>
+            <li>get_queryset filtrado por rol<span class="dim">los admins ven todo, los demás no ven incidentes borrados.</span></li>
+            <li>select_related + prefetch_related<span class="dim">evita el problema N+1: un solo SQL en vez de uno por incidente.</span></li>
+            <li>@action añade endpoints custom<span class="dim">/incidents/{id}/vote/, /subscribe/, /photos/… al mismo router.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 08b — DJANGO ADMIN + SWAGGER ============================ -->
+<section data-label="12 Admin y Swagger">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">10 · Herramientas que vienen incluidas</p>
+        <span class="mono" style="color: var(--fg-dim);">Sin escribir código extra</span>
+      </div>
+      <h2 class="title">Panel de administración y documentación automática.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="duo-grid">
+        <div class="duo-cell">
+          <span class="duo-label">Django Admin</span>
+          <h3>Un CRUD completo, listo para usar.</h3>
+          <p>Solo registrando los modelos, Django genera automáticamente un panel para crear, listar, editar y borrar registros de la base de datos. Lo usamos en desarrollo para inspeccionar datos sin tocar SQL.</p>
+          <image-slot
+            id="django-admin-shot"
+            src="images/django-admin.png"
+            shape="rounded"
+            radius="14"
+            fit="contain"
+            placeholder="Captura del panel /admin/"
+            style="width: 100%; background: var(--surface);"></image-slot>
+        </div>
+        <div class="duo-cell">
+          <span class="duo-label">Swagger UI</span>
+          <h3>La API se documenta sola.</h3>
+          <p>DRF-Spectacular lee los serializers y genera un OpenAPI vivo. Swagger UI lo convierte en una página interactiva donde se puede probar cada endpoint sin Postman.</p>
+          <image-slot
+            id="swagger-shot"
+            src="images/swagger.png"
+            shape="rounded"
+            radius="14"
+            fit="contain"
+            placeholder="Captura de /api/schema/swagger-ui/"
+            style="width: 100%; background: var(--surface);"></image-slot>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 09 — WEBSOCKETS ============================ -->
+<section data-label="13 WebSockets">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">11 · Notificaciones en tiempo real</p>
+        <span class="mono" style="color: var(--fg-dim);">Django Channels + Redis</span>
+      </div>
+      <h2 class="title">Notificaciones en tiempo real con WebSockets.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="challenge">
+        <div class="challenge-text">
+          <div>
+            <span class="lead-label">El problema</span>
+            <p class="lead">En una web normal el navegador pregunta y el servidor responde, pero el servidor no puede avisar al navegador por su cuenta cuando algo cambia.</p>
+          </div>
+          <div>
+            <span class="lead-label">La solución</span>
+            <p class="lead">WebSockets: una línea telefónica permanente entre navegador y servidor. La línea queda abierta y, cuando hay novedad, el servidor llama directamente al cliente.</p>
+          </div>
+          <ul class="challenge-points">
+            <li>Django Channels es la extensión que permite a Django mantener esas conexiones abiertas.</li>
+            <li>Redis hace de intermediario: reparte los mensajes al canal correcto.</li>
+          </ul>
+        </div>
+        <div class="ws-proof">
+          <div class="ws-proof-panel">
+            <span class="ws-proof-label"><span class="accent">En vivo</span> &nbsp;→&nbsp; campanita del header</span>
+            <image-slot
+              id="notif-shot-dropdown"
+              src="images/notif-dropdown.png"
+              shape="rounded"
+              radius="14"
+              fit="contain"
+              placeholder="Dropdown de notificaciones"
+              style="width: 100%; background: var(--surface);"></image-slot>
+          </div>
+          <div class="ws-proof-panel">
+            <span class="ws-proof-label"><span class="accent">Histórico</span> &nbsp;→&nbsp; página completa</span>
+            <image-slot
+              id="notif-shot-page"
+              src="images/notif-page.png"
+              shape="rounded"
+              radius="14"
+              fit="contain"
+              placeholder="Página de notificaciones"
+              style="width: 100%; background: var(--surface);"></image-slot>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 12 — FRONTEND ============================ -->
+<section data-label="14 Frontend">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">12 · Frontend</p>
+        <span class="mono" style="color: var(--fg-dim);">React + Vite + Tailwind</span>
+      </div>
+      <h2 class="title">Tecnologías del frontend.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="demo-2">
+        <image-slot
+          id="frontend-screenshot"
+          src="images/dashboard-nuevo.png"
+          shape="rounded"
+          radius="14"
+          fit="contain"
+          placeholder="Captura de la home · listado de incidencias"
+          style="width: 100%; height: 100%; min-height: 0; background: var(--surface);"></image-slot>
+        <div class="demo-side">
+          <h3>Tres herramientas, un objetivo: que cargue rápido y se vea consistente.</h3>
+          <ul class="demo-2-features" style="gap: 18px;">
+            <li><span style="color: var(--accent);">React</span> &nbsp; construye la web como piezas de Lego reutilizables (botones, tarjetas, formularios).</li>
+            <li><span style="color: var(--accent);">Vite</span> &nbsp; es el motor de desarrollo: cada vez que guardamos un archivo, el navegador se actualiza al instante.</li>
+            <li><span style="color: var(--accent);">Tailwind</span> &nbsp; es el sistema de estilos: en vez de escribir CSS aparte, los colores y espacios viven en el propio componente.</li>
+            <li><span style="color: var(--accent);">Redux</span> &nbsp; guarda el estado compartido: quién está logueado, qué notificaciones tiene.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 12b — AXIOS ============================ -->
+<section data-label="15 Axios">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">13 · Frontend · cliente HTTP</p>
+        <span class="mono" style="color: var(--fg-dim);">src/api/axiosConfig.js</span>
+      </div>
+      <h2 class="title">Axios: una sola puerta para hablar con la API.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="code-slide">
+<pre class="code"><span class="tok-key">const</span> api = axios.create({
+  baseURL: <span class="tok-str">'/api'</span>,
+  headers: { <span class="tok-str">'Content-Type'</span>: <span class="tok-str">'application/json'</span> },
+})
+
+<span class="tok-com">// 1· Añade el JWT a cada petición saliente</span>
+api.interceptors.request.use((config) =&gt; {
+  <span class="tok-key">const</span> token = localStorage.getItem(<span class="tok-str">'access_token'</span>)
+  <span class="tok-key">if</span> (token)
+    config.headers.Authorization = <span class="tok-str">`Bearer ${token}`</span>
+  <span class="tok-key">return</span> config
+})
+
+<span class="tok-com">// 2· Si una respuesta vuelve 401, refresca y reintenta</span>
+api.interceptors.response.use(
+  (r) =&gt; r,
+  <span class="tok-key">async</span> (error) =&gt; {
+    <span class="tok-key">if</span> (error.response?.status === <span class="tok-num">401</span> &amp;&amp; !original._retry) {
+      original._retry = <span class="tok-key">true</span>
+      <span class="tok-key">const</span> { data } = <span class="tok-key">await</span> axios.post(
+        <span class="tok-str">'/api/auth/token/refresh/'</span>, { refresh },
+      )
+      localStorage.setItem(<span class="tok-str">'access_token'</span>, data.access)
+      <span class="tok-key">return</span> api(original)  <span class="tok-com">// reintenta</span>
+    }
+    <span class="tok-key">return</span> Promise.reject(error)
+  },
+)</pre>
+        <div class="code-explain">
+          <h3>Lo que aporta</h3>
+          <ul>
+            <li>Una instancia compartida<span class="dim">todas las llamadas pasan por aquí con baseURL <span class="mono" style="color: var(--accent);">/api</span>.</span></li>
+            <li>Interceptor de petición<span class="dim">añade el JWT automáticamente. Ningún componente tiene que acordarse del token.</span></li>
+            <li>Interceptor de respuesta<span class="dim">si el backend devuelve 401, pide un access nuevo con el refresh y reintenta la petición original.</span></li>
+            <li>El usuario no ve “sesión expirada”<span class="dim">mientras el refresh siga vivo, la app vuelve a la actividad sin volver a pedir login.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 13 — DEMO CITIZEN ============================ -->
+<section data-label="13 Flujo ciudadano">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">14 · Demo · reportar</p>
+        <span class="mono" style="color: var(--fg-dim);">Crear una incidencia</span>
+      </div>
+      <h2 class="title">Reportar una incidencia paso a paso.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="demo">
+        <div class="demo-frame">
+          <span class="caption"><span class="step">01</span>Subir foto del problema</span>
+          <image-slot id="reportar-1" src="images/crear-imagen.png" shape="rounded" radius="14" fit="contain"
+            placeholder="CreateIncidentForm · foto"
+            style="width: 100%; background: var(--surface);"></image-slot>
+        </div>
+        <div class="demo-frame">
+          <span class="caption"><span class="step">02</span>Marcar ubicación en el mapa</span>
+          <image-slot id="reportar-2" src="images/mapa-picker.png" shape="rounded" radius="14" fit="contain"
+            placeholder="LocationPicker · Leaflet"
+            style="width: 100%; background: var(--surface);"></image-slot>
+        </div>
+        <div class="demo-frame">
+          <span class="caption"><span class="step">03</span>Confirmación de publicación</span>
+          <image-slot id="reportar-3" src="images/publicado.png" shape="rounded" radius="14" fit="contain"
+            placeholder="Incidente publicado · modal"
+            style="width: 100%; background: var(--surface);"></image-slot>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 13b — INTERACTIONS ============================ -->
+<section data-label="14 Acciones sobre el incidente">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">15 · Demo · interacciones</p>
+        <span class="mono" style="color: var(--fg-dim);">Detalle, votar, suscribir, compartir</span>
+      </div>
+      <h2 class="title">Acciones sobre un incidente.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="demo-pair">
+        <div class="demo-frame">
+          <span class="caption"><span class="step">01</span>Detalle, votos y comentarios</span>
+          <image-slot id="interact-1" src="images/detalle-bache.png" shape="rounded" radius="14" fit="contain"
+            placeholder="IncidentDetail · votar / suscribir / asignar"
+            style="width: 100%; background: var(--surface);"></image-slot>
+        </div>
+        <div class="demo-frame">
+          <span class="caption"><span class="step">02</span>Compartir por WhatsApp, X, Facebook o Telegram</span>
+          <image-slot id="interact-2" src="images/share-modal.png" shape="rounded" radius="14" fit="contain"
+            placeholder="ShareModal · redes sociales + enlace"
+            style="width: 100%; background: var(--surface);"></image-slot>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 13c — PROFILES ============================ -->
+<section data-label="15 Perfiles de usuario">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">16 · Demo · perfiles</p>
+        <span class="mono" style="color: var(--fg-dim);">Identidad y participación del usuario</span>
+      </div>
+      <h2 class="title">Perfiles de usuario.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="demo-pair">
+        <div class="demo-frame">
+          <span class="caption"><span class="step">01</span>Mi perfil · información y reportes</span>
+          <image-slot id="perfil-1" src="images/perfil-propio.png" shape="rounded" radius="14" fit="contain"
+            placeholder="ProfileInfo + ProfileIncidents"
+            style="width: 100%; background: var(--surface);"></image-slot>
+        </div>
+        <div class="demo-frame">
+          <span class="caption"><span class="step">02</span>Perfil de otro usuario</span>
+          <image-slot id="perfil-2" src="images/perfil-otro.png" shape="rounded" radius="14" fit="contain"
+            placeholder="Perfil público · sus reportes"
+            style="width: 100%; background: var(--surface);"></image-slot>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 14 — DEMO ADMIN ============================ -->
+<section data-label="16 Panel de gestion">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">17 · Demo · gestión</p>
+        <span class="mono" style="color: var(--fg-dim);">Trabajador y administrador</span>
+      </div>
+      <h2 class="title">Panel del trabajador y administrador.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="demo">
+        <div class="demo-frame">
+          <span class="caption"><span class="step">01</span>Bandeja de asignaciones</span>
+          <image-slot id="admin-1" src="images/asignados-nuevo.png" shape="rounded" radius="14" fit="contain"
+            placeholder="AssignPanel · incidentes asignados"
+            style="width: 100%; background: var(--surface);"></image-slot>
+        </div>
+        <div class="demo-frame">
+          <span class="caption"><span class="step">02</span>Gestión de usuarios</span>
+          <image-slot id="admin-2" src="images/usuarios.png" shape="rounded" radius="14" fit="contain"
+            placeholder="UserCard · roles y permisos"
+            style="width: 100%; background: var(--surface);"></image-slot>
+        </div>
+        <div class="demo-frame">
+          <span class="caption"><span class="step">03</span>Gestión de categorías</span>
+          <image-slot id="admin-3" src="images/categorias.png" shape="rounded" radius="14" fit="contain"
+            placeholder="CategoryCard · CRUD de categorías"
+            style="width: 100%; background: var(--surface);"></image-slot>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 16 — RESULTS + THANKS ============================ -->
+<section data-label="17 Resultados">
+  <div class="frame">
+    <div class="slide-head">
+      <div class="slide-head-row">
+        <p class="eyebrow">18 · Resultados</p>
+        <span class="mono" style="color: var(--fg-dim);">Lo que hemos conseguido</span>
+      </div>
+      <h2 class="title">Resultados del proyecto.</h2>
+    </div>
+    <div class="slide-body">
+      <div class="results-top">
+        <div class="metric">
+          <span class="metric-num">6</span>
+          <span class="metric-label">Servicios contenedorizados</span>
+        </div>
+        <div class="metric">
+          <span class="metric-num">4</span>
+          <span class="metric-label">Apps Django independientes</span>
+        </div>
+        <div class="metric">
+          <span class="metric-num">38</span>
+          <span class="metric-label">Componentes React</span>
+        </div>
+        <div class="metric">
+          <span class="metric-num">3</span>
+          <span class="metric-label">Roles con permisos granulares</span>
+        </div>
+      </div>
+      <div class="results-single">
+        <h3>Lo que hemos conseguido</h3>
+        <ul>
+          <li>API REST documentada con Swagger</li>
+          <li>Autenticación JWT con roles diferenciados</li>
+          <li>Notificaciones en tiempo real con WebSockets</li>
+          <li>Geolocalización, fotos, comentarios y votos</li>
+          <li>Entorno reproducible con Docker Compose</li>
+        </ul>
+      </div>
+      <div class="closing-bar">
+        <span class="thanks">Gracias. <span style="color: var(--fg-muted);">¿Preguntas?</span></span>
+        <span class="repo">ARIT · mni-Tech · Asier Gallardo · Edwar González</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+</deck-stage>
+
+<script src="image-slot.js"></script>
+<script src="deck-stage.js"></script>
+</body>
+</html>
