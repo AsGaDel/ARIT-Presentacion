@@ -10,8 +10,8 @@
 
 <script type="application/json" id="speaker-notes">
 [
-  "Buenos días. Soy Asier Gallardo, junto con Edwar González presentamos el proyecto final del ciclo: ARIT, una plataforma de gestión de incidencias municipales. En los próximos 10 minutos vamos a recorrer la solución que hemos construido, el stack técnico, los retos más interesantes y los resultados.",
-  "Nuestra propuesta es una sola plataforma web que centraliza el ciclo de vida completo de la incidencia: reporte georeferenciado, priorización, asignación, resolución con evidencia fotográfica, y notificación al ciudadano. Una sola fuente de verdad.",
+  "Buenos días. Soy Asier Gallardo Delgado, junto con Edwar González González presentamos el proyecto final del ciclo: ARIT, una plataforma de gestión de incidencias municipales. En los próximos 10 minutos vamos a recorrer la solución que hemos construido, el stack técnico, los retos más interesantes y los resultados.",
+  "Nuestra propuesta es una sola plataforma web que centraliza el ciclo de vida completo de la incidencia: reporte georeferenciado, priorización, asignación, resolución, y notificación al ciudadano. Una sola fuente de verdad.",
   "La plataforma se diseñó alrededor de tres roles bien diferenciados, cada uno con su propia interfaz y permisos. El ciudadano reporta y se suscribe. El trabajador recibe asignaciones y resuelve. El administrador gobierna usuarios, categorías y prioridades.",
   "El stack es la lista de tecnologías que usamos. Lo voy a ir explicando con calma en las siguientes slides, pero la idea general es: Django y Python para el cerebro del servidor, PostgreSQL para guardar los datos, React para lo que ve el usuario, y Docker para arrancarlo todo con un solo comando.",
   "Esta es la arquitectura. En lugar de instalar todas las piezas en el mismo ordenador, cada una vive en su propio contenedor: la base de datos por un lado, el servidor por otro, Redis por otro. Docker se encarga de que se conozcan entre sí. La ventaja: cualquiera puede arrancar el proyecto en su máquina con un solo comando, sin instalar nada a mano.",
@@ -22,7 +22,7 @@
   "En views está la lógica de negocio. Heredando de ModelViewSet, Django REST nos da gratis los cinco endpoints CRUD: listar, ver, crear, actualizar, borrar. Encima de eso, sobrescribimos get_queryset para filtrar por rol, y añadimos endpoints custom con el decorador action. Así sale por ejemplo /incidents/3/vote/ para votar con un toggle: si el voto ya existe se borra; si no, se crea. Además, select_related y prefetch_related nos evitan el problema N+1 clásico del ORM.",
   "Aprovechando todo esto, Django y DRF nos dan dos herramientas casi gratis. La primera es el panel de Django Admin: registrando los modelos, Django genera automáticamente un CRUD completo para inspeccionar y manipular la base de datos en desarrollo. La segunda es Swagger, una página interactiva donde la propia API se documenta sola y podemos probar cada endpoint sin necesidad de Postman.",
   "Reto técnico más interesante: las notificaciones en tiempo real. El problema es que en una web normal el navegador pregunta y el servidor responde, pero el servidor no puede avisar por su cuenta. La solución son los WebSockets, que abren una línea telefónica permanente entre cliente y servidor. Django Channels es la extensión que hace esto posible, y Redis ayuda repartiendo los mensajes al canal correcto. A la derecha veis las dos formas que tiene el usuario de leer sus notificaciones: la campanita del header, que se actualiza al instante, y la página completa con el histórico.",
-  "Para el frontend, lo que se ve en el navegador, hemos usado cuatro herramientas. React, que permite construir la web como piezas de Lego reutilizables. Vite, un motor de desarrollo que actualiza la web en tiempo real cuando cambiamos algo. Tailwind, un sistema de estilos donde los colores y espacios viven dentro del propio componente. Y Redux, que guarda el estado compartido como quién está logueado o qué notificaciones tiene.",
+  "Para el frontend, lo que se ve en el navegador, hemos usado tres herramientas. React, que permite construir la web como piezas de Lego reutilizables. Vite, un motor de desarrollo que actualiza la web en tiempo real cuando cambiamos algo. Y Tailwind, un sistema de estilos donde los colores y espacios viven dentro del propio componente.",
   "Para hablar con la API, todo pasa por una sola instancia de Axios. Tiene dos interceptores que merecen la pena destacar. El primero, antes de cada petición, lee el token JWT del localStorage y lo añade automáticamente a la cabecera. Ningún componente tiene que acordarse del token. El segundo, después de cada respuesta, mira si el servidor devolvió un 401 — sesión caducada. Si es así, intenta refrescar el token con el refresh y reintenta la petición original. El usuario nunca ve un ‘sesión expirada’ mientras el refresh siga vivo.",
   "Empezamos por el flujo del ciudadano. Lo primero, reportar una incidencia. El proceso tiene tres pasos: primero sube una foto del problema, segundo marca la ubicación haciendo clic en el mapa, y tercero recibe la confirmación de que el incidente ya es visible para el resto de usuarios.",
   "Una vez publicado el incidente, el ciudadano puede interactuar con él. En el detalle ve la foto, la dirección, la descripción y los comentarios. Puede votar para indicar prioridad, suscribirse para recibir notificaciones del estado, o compartir el incidente por WhatsApp, X, Facebook, Telegram o copiando el enlace directo.",
@@ -604,10 +604,10 @@
     background: var(--surface);
     border: 1px solid var(--line-soft);
     border-radius: 14px;
-    padding: 28px 32px;
+    padding: 24px 30px;
     font-family: 'Geist Mono', monospace;
-    font-size: 22px;
-    line-height: 1.5;
+    font-size: 20px;
+    line-height: 1.4;
     color: var(--fg-muted);
     white-space: pre;
     overflow: hidden;
@@ -728,6 +728,31 @@
     text-transform: uppercase;
   }
   .ws-proof-label .accent{ color: var(--accent); }
+
+  /* Stacked horizontal screenshots (full-width rows) */
+  .demo-stack{
+    display: grid;
+    grid-template-rows: 1fr 1fr 1fr;
+    gap: 18px;
+    flex: 1;
+    min-height: 0;
+  }
+  .demo-stack .demo-frame{
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 28px;
+    align-items: center;
+    min-height: 0;
+  }
+  .demo-stack .demo-frame .caption{
+    margin: 0;
+    font-size: 22px;
+  }
+  .demo-stack .demo-frame image-slot{
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
 
   /* Two-panel demo (variant of .demo) */
   .demo-pair{
@@ -1164,7 +1189,7 @@
       <div class="cover-top">
         <div class="cover-mark">
           <span class="mark-square"></span>
-          <span>mni-Tech · 2026</span>
+          <span>Omni-Tech · 2026</span>
         </div>
         <div class="cover-meta">
           <div>Proyecto DAW · Desarrollo de Aplicaciones Web</div>
@@ -1186,7 +1211,7 @@
           </div>
           <div class="author">
             <span class="author-label">Autor 02</span>
-            <span class="author-name">Edwar González</span>
+            <span class="author-name">Edwar González González</span>
           </div>
         </div>
         <div class="cover-footer-right">
@@ -1219,7 +1244,7 @@
         <div class="pillar">
           <span class="pillar-num">PILAR 02</span>
           <h3>Asignación<br/>y resolución</h3>
-          <p>Priorización, asignación a trabajador, comentarios internos y evidencia fotográfica del cierre.</p>
+          <p>Priorización, asignación a trabajador y comentarios internos.</p>
         </div>
         <div class="pillar">
           <span class="pillar-num">PILAR 03</span>
@@ -1522,7 +1547,7 @@
   <div class="frame">
     <div class="slide-head">
       <div class="slide-head-row">
-        <p class="eyebrow">07 · Backend · models.py</p>
+        <p class="eyebrow">07 · models.py</p>
         <span class="mono" style="color: var(--fg-dim);">apps/incidents/models.py</span>
       </div>
       <h2 class="title">El modelo de datos.</h2>
@@ -1566,7 +1591,7 @@
   <div class="frame">
     <div class="slide-head">
       <div class="slide-head-row">
-        <p class="eyebrow">08 · Backend · serializers.py</p>
+        <p class="eyebrow">08 · serializers.py</p>
         <span class="mono" style="color: var(--fg-dim);">apps/incidents/serializers.py</span>
       </div>
       <h2 class="title">El traductor entre Python y JSON.</h2>
@@ -1612,7 +1637,7 @@
   <div class="frame">
     <div class="slide-head">
       <div class="slide-head-row">
-        <p class="eyebrow">09 · Backend · views.py</p>
+        <p class="eyebrow">09 · views.py</p>
         <span class="mono" style="color: var(--fg-dim);">apps/incidents/views.py</span>
       </div>
       <h2 class="title">La lógica de negocio.</h2>
@@ -1778,7 +1803,6 @@
             <li><span style="color: var(--accent);">React</span> &nbsp; construye la web como piezas de Lego reutilizables (botones, tarjetas, formularios).</li>
             <li><span style="color: var(--accent);">Vite</span> &nbsp; es el motor de desarrollo: cada vez que guardamos un archivo, el navegador se actualiza al instante.</li>
             <li><span style="color: var(--accent);">Tailwind</span> &nbsp; es el sistema de estilos: en vez de escribir CSS aparte, los colores y espacios viven en el propio componente.</li>
-            <li><span style="color: var(--accent);">Redux</span> &nbsp; guarda el estado compartido: quién está logueado, qué notificaciones tiene.</li>
           </ul>
         </div>
       </div>
@@ -1791,7 +1815,7 @@
   <div class="frame">
     <div class="slide-head">
       <div class="slide-head-row">
-        <p class="eyebrow">13 · Frontend · cliente HTTP</p>
+        <p class="eyebrow">13 · Axios</p>
         <span class="mono" style="color: var(--fg-dim);">src/api/axiosConfig.js</span>
       </div>
       <h2 class="title">Axios: una sola puerta para hablar con la API.</h2>
@@ -1803,29 +1827,24 @@
   headers: { <span class="tok-str">'Content-Type'</span>: <span class="tok-str">'application/json'</span> },
 })
 
-<span class="tok-com">// 1· Añade el JWT a cada petición saliente</span>
+<span class="tok-com">// 1· Añade el JWT a cada petición</span>
 api.interceptors.request.use((config) =&gt; {
   <span class="tok-key">const</span> token = localStorage.getItem(<span class="tok-str">'access_token'</span>)
-  <span class="tok-key">if</span> (token)
-    config.headers.Authorization = <span class="tok-str">`Bearer ${token}`</span>
+  <span class="tok-key">if</span> (token) config.headers.Authorization = <span class="tok-str">`Bearer ${token}`</span>
   <span class="tok-key">return</span> config
 })
 
-<span class="tok-com">// 2· Si una respuesta vuelve 401, refresca y reintenta</span>
-api.interceptors.response.use(
-  (r) =&gt; r,
-  <span class="tok-key">async</span> (error) =&gt; {
-    <span class="tok-key">if</span> (error.response?.status === <span class="tok-num">401</span> &amp;&amp; !original._retry) {
-      original._retry = <span class="tok-key">true</span>
-      <span class="tok-key">const</span> { data } = <span class="tok-key">await</span> axios.post(
-        <span class="tok-str">'/api/auth/token/refresh/'</span>, { refresh },
-      )
-      localStorage.setItem(<span class="tok-str">'access_token'</span>, data.access)
-      <span class="tok-key">return</span> api(original)  <span class="tok-com">// reintenta</span>
-    }
-    <span class="tok-key">return</span> Promise.reject(error)
-  },
-)</pre>
+<span class="tok-com">// 2· Si vuelve 401, refresca y reintenta</span>
+api.interceptors.response.use((r) =&gt; r, <span class="tok-key">async</span> (error) =&gt; {
+  <span class="tok-key">if</span> (error.response?.status === <span class="tok-num">401</span>) {
+    <span class="tok-key">const</span> { data } = <span class="tok-key">await</span> axios.post(
+      <span class="tok-str">'/api/auth/token/refresh/'</span>, { refresh },
+    )
+    localStorage.setItem(<span class="tok-str">'access_token'</span>, data.access)
+    <span class="tok-key">return</span> api(error.config)  <span class="tok-com">// reintenta</span>
+  }
+  <span class="tok-key">return</span> Promise.reject(error)
+})</pre>
         <div class="code-explain">
           <h3>Lo que aporta</h3>
           <ul>
@@ -1944,24 +1963,24 @@ api.interceptors.response.use(
       <h2 class="title">Panel del trabajador y administrador.</h2>
     </div>
     <div class="slide-body">
-      <div class="demo">
+      <div class="demo-stack">
         <div class="demo-frame">
           <span class="caption"><span class="step">01</span>Bandeja de asignaciones</span>
           <image-slot id="admin-1" src="images/asignados-nuevo.png" shape="rounded" radius="14" fit="contain"
             placeholder="AssignPanel · incidentes asignados"
-            style="width: 100%; background: var(--surface);"></image-slot>
+            style="background: var(--surface);"></image-slot>
         </div>
         <div class="demo-frame">
           <span class="caption"><span class="step">02</span>Gestión de usuarios</span>
           <image-slot id="admin-2" src="images/usuarios.png" shape="rounded" radius="14" fit="contain"
             placeholder="UserCard · roles y permisos"
-            style="width: 100%; background: var(--surface);"></image-slot>
+            style="background: var(--surface);"></image-slot>
         </div>
         <div class="demo-frame">
           <span class="caption"><span class="step">03</span>Gestión de categorías</span>
           <image-slot id="admin-3" src="images/categorias.png" shape="rounded" radius="14" fit="contain"
             placeholder="CategoryCard · CRUD de categorías"
-            style="width: 100%; background: var(--surface);"></image-slot>
+            style="background: var(--surface);"></image-slot>
         </div>
       </div>
     </div>
@@ -2009,7 +2028,7 @@ api.interceptors.response.use(
       </div>
       <div class="closing-bar">
         <span class="thanks">Gracias. <span style="color: var(--fg-muted);">¿Preguntas?</span></span>
-        <span class="repo">ARIT · mni-Tech · Asier Gallardo · Edwar González</span>
+        <span class="repo">ARIT · Omni-Tech · Asier Gallardo Delgado · Edwar González González</span>
       </div>
     </div>
   </div>
